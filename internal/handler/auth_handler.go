@@ -70,7 +70,7 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.authService.SaveRefreshToken(userID, tokens.HashedRefreshToken); err != nil {
+	if err = h.authService.SaveRefreshToken(userID, userIP, tokens.HashedRefreshToken); err != nil {
 		log.Printf("error saving refresh token to db: %s\n", err)
 		respondWithError(w, http.StatusInternalServerError, "error saving refresh token to db")
 		return

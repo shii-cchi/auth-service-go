@@ -86,6 +86,6 @@ func (s AuthService) newRefreshToken() (string, string, error) {
 	return refreshTokenStr, string(hashedToken), nil
 }
 
-func (s AuthService) SaveRefreshToken(userID uuid.UUID, hashedRefreshToken string) error {
-	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{Token: hashedRefreshToken, ID: userID})
+func (s AuthService) SaveRefreshToken(userID uuid.UUID, userIP string, hashedRefreshToken string) error {
+	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: userID, Ip: userIP, Token: hashedRefreshToken})
 }

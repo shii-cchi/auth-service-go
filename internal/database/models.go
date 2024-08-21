@@ -10,5 +10,6 @@ import (
 
 type User struct {
 	ID    uuid.UUID
+	Ip    string
 	Token string
 }
