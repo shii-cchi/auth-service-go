@@ -12,9 +12,8 @@ import (
 )
 
 const addRefreshToken = `-- name: AddRefreshToken :exec
-UPDATE users
-SET token = $2
-WHERE id = $1
+INSERT INTO users (id, token)
+VALUES ($1, $2)
 `
 
 type AddRefreshTokenParams struct {

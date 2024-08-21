@@ -28,10 +28,10 @@ func NewAuthService(q *database.Queries, cfg *config.Config) *AuthService {
 
 type tokenClaims struct {
 	jwt.StandardClaims
-	UserIP int `json:"user_ip"`
+	UserIP string `json:"user_ip"`
 }
 
-func (s AuthService) CreateTokens(userID uuid.UUID, userIP int) (model.Tokens, error) {
+func (s AuthService) CreateTokens(userID uuid.UUID, userIP string) (model.Tokens, error) {
 	ttl, err := time.ParseDuration(s.config.AccessTTL)
 
 	if err != nil {
@@ -50,14 +50,10 @@ func (s AuthService) CreateTokens(userID uuid.UUID, userIP int) (model.Tokens, e
 		return model.Tokens{}, fmt.Errorf("error creating refresh token: %s\n", err)
 	}
 
-	if err = s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{Token: hashedRefreshToken, ID: userID}); err != nil {
-		return model.Tokens{}, fmt.Errorf("error adding refresh token to db: %s\n", err)
-	}
-
-	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken}, nil
+	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
 }
 
-func (s AuthService) newAccessToken(userID uuid.UUID, userIP int, ttl time.Duration) (string, error) {
+func (s AuthService) newAccessToken(userID uuid.UUID, userIP string, ttl time.Duration) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, &tokenClaims{
 		jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(ttl).Unix(),
@@ -88,4 +84,8 @@ func (s AuthService) newRefreshToken() (string, string, error) {
 	}
 
 	return refreshTokenStr, string(hashedToken), nil
+}
+
+func (s AuthService) SaveRefreshToken(userID uuid.UUID, hashedRefreshToken string) error {
+	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{Token: hashedRefreshToken, ID: userID})
 }

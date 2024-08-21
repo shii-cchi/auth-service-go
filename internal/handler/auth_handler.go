@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"auth-service-go/internal/model"
 	"auth-service-go/internal/service"
 	"github.com/go-chi/chi"
 	"github.com/google/uuid"
+	"log"
+	"net"
 	"net/http"
-	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,19 +51,28 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userIPStr := r.RemoteAddr
+	userIP := r.RemoteAddr
 
-	userIP, err := strconv.Atoi(userIPStr)
+	if strings.Contains(userIP, ":") {
+		userIP, _, err = net.SplitHostPort(userIP)
 
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "error parsing user ip")
-		return
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "error parsing user ip")
+			return
+		}
 	}
 
 	tokens, err := h.authService.CreateTokens(userID, userIP)
 
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "error creating tokens")
+		log.Printf("error creating tokens: %s\n", err)
+		respondWithError(w, http.StatusInternalServerError, "error creating tokens")
+		return
+	}
+
+	if err = h.authService.SaveRefreshToken(userID, tokens.HashedRefreshToken); err != nil {
+		log.Printf("error saving refresh token to db: %s\n", err)
+		respondWithError(w, http.StatusInternalServerError, "error saving refresh token to db")
 		return
 	}
 
@@ -73,7 +85,7 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &cookie)
 
-	respondWithJSON(w, http.StatusOK, tokens)
+	respondWithJSON(w, http.StatusOK, model.User{UserID: userID, AccessToken: tokens.AccessToken})
 }
 
 func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
