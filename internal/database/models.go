@@ -8,8 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type User struct {
+type Client struct {
 	ID    uuid.UUID
-	Ip    string
 	Token string
 }

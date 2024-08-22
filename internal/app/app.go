@@ -4,7 +4,6 @@ import (
 	"auth-service-go/internal/config"
 	"auth-service-go/internal/database"
 	"auth-service-go/internal/handler"
-	"auth-service-go/internal/service"
 	"database/sql"
 	"fmt"
 	"github.com/go-chi/chi"
@@ -34,9 +33,7 @@ func Run() {
 
 	r := chi.NewRouter()
 
-	authService := service.NewAuthService(queries, cfg)
-
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(queries, cfg)
 
 	authHandler.RegisterEndpoints(r)
 

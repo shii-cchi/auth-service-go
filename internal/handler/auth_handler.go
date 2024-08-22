@@ -1,24 +1,26 @@
 package handler
 
 import (
+	"auth-service-go/internal/config"
+	"auth-service-go/internal/database"
 	"auth-service-go/internal/model"
 	"auth-service-go/internal/service"
+	"fmt"
 	"github.com/go-chi/chi"
-	"github.com/google/uuid"
 	"log"
-	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
 type AuthHandler struct {
 	authService *service.AuthService
+	config      *config.Config
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(q *database.Queries, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService: service.NewAuthService(q, cfg),
+		config:      cfg,
 	}
 }
 
@@ -37,32 +39,17 @@ func (h *AuthHandler) authHandlers() http.Handler {
 }
 
 func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("user_id")
-
-	if err := uuid.Validate(userIDStr); err != nil {
-		respondWithError(w, http.StatusBadRequest, "invalid uuid format")
-		return
-	}
-
-	userID, err := uuid.Parse(userIDStr)
+	clientID, err := getIDFromRequest(r)
 
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "error parsing user id")
+		log.Printf("error getting client id: %s\n", err)
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	userIP := r.RemoteAddr
+	clientIP := getIPFromRequest(r)
 
-	if strings.Contains(userIP, ":") {
-		userIP, _, err = net.SplitHostPort(userIP)
-
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "error parsing user ip")
-			return
-		}
-	}
-
-	tokens, err := h.authService.CreateTokens(userID, userIP)
+	tokens, err := h.authService.CreateTokens(clientID, clientIP)
 
 	if err != nil {
 		log.Printf("error creating tokens: %s\n", err)
@@ -70,7 +57,7 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.authService.SaveRefreshToken(userID, userIP, tokens.HashedRefreshToken); err != nil {
+	if err = h.authService.SaveRefreshToken(clientID, tokens.HashedRefreshToken); err != nil {
 		log.Printf("error saving refresh token to db: %s\n", err)
 		respondWithError(w, http.StatusInternalServerError, "error saving refresh token to db")
 		return
@@ -80,14 +67,77 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		Name:     "refresh_token",
 		Value:    tokens.RefreshToken,
 		HttpOnly: true,
-		Expires:  time.Now().Add(7 * 24 * time.Hour),
+		Expires:  time.Now().Add(h.config.RefreshTTL * time.Hour),
 	}
 
 	http.SetCookie(w, &cookie)
 
-	respondWithJSON(w, http.StatusOK, model.User{UserID: userID, AccessToken: tokens.AccessToken})
+	respondWithJSON(w, http.StatusOK, model.Client{ClientID: clientID, AccessToken: tokens.AccessToken})
 }
 
 func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
 
+	if err != nil {
+		if err == http.ErrNoCookie {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("cookie not found %s\n", err))
+			return
+		}
+
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("%v", err))
+		return
+	}
+
+	refreshToken := cookie.Value
+
+	accessToken := r.Header.Get("Authorization")
+
+	if accessToken == "" {
+		respondWithError(w, http.StatusUnauthorized, "access token not found")
+		return
+	}
+
+	clientID, clientIP, err := h.authService.GetIDAndIPFromToken(accessToken)
+
+	if err != nil {
+		log.Printf("error getting id and ip from token: %s\n", err)
+		respondWithError(w, http.StatusUnauthorized, "invalid access token")
+		return
+	}
+
+	if clientIP != getIPFromRequest(r) {
+		log.Println("send warning to client mail")
+		return
+	}
+
+	if err = h.authService.IsValidRefreshToken(clientID, refreshToken); err != nil {
+		log.Printf("invalid refresh token: %s\n", err)
+		respondWithError(w, http.StatusUnauthorized, "invalid refresh token")
+		return
+	}
+
+	tokens, err := h.authService.CreateTokens(clientID, clientIP)
+
+	if err != nil {
+		log.Printf("error creating tokens: %s\n", err)
+		respondWithError(w, http.StatusInternalServerError, "error creating tokens")
+		return
+	}
+
+	if err = h.authService.UpdateRefreshToken(clientID, tokens.HashedRefreshToken); err != nil {
+		log.Printf("error updating refresh token in db: %s\n", err)
+		respondWithError(w, http.StatusInternalServerError, "error updating refresh token in db")
+		return
+	}
+
+	*cookie = http.Cookie{
+		Name:     "refresh_token",
+		Value:    tokens.RefreshToken,
+		HttpOnly: true,
+		Expires:  time.Now().Add(h.config.RefreshTTL * time.Hour),
+	}
+
+	http.SetCookie(w, cookie)
+
+	respondWithJSON(w, http.StatusOK, model.Client{ClientID: clientID, AccessToken: tokens.AccessToken})
 }

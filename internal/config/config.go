@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/joho/godotenv"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -13,8 +14,9 @@ type Config struct {
 	DbHost           string
 	DbPort           string
 	DbName           string
-	AccessTTL        string
+	AccessTTL        time.Duration
 	AccessSigningKey string
+	RefreshTTL       time.Duration
 }
 
 func LoadConfig() (*Config, error) {
@@ -60,16 +62,34 @@ func LoadConfig() (*Config, error) {
 		return nil, errors.New("DB_NAME parameter is not defined")
 	}
 
-	accessTTL := os.Getenv("ACCESS_TTL")
+	accessTTLStr := os.Getenv("ACCESS_TTL")
 
-	if accessTTL == "" {
+	if accessTTLStr == "" {
 		return nil, errors.New("ACCESS_TTL parameter is not defined")
+	}
+
+	accessTTL, err := time.ParseDuration(accessTTLStr)
+
+	if err != nil {
+		return nil, errors.New("error parsing access ttl")
 	}
 
 	accessSigningKey := os.Getenv("ACCESS_SIGNING_KEY")
 
 	if accessSigningKey == "" {
 		return nil, errors.New("ACCESS_SIGNING_KEY parameter is not defined")
+	}
+
+	refreshTTLStr := os.Getenv("REFRESH_TTL")
+
+	if refreshTTLStr == "" {
+		return nil, errors.New("REFRESH_TTL parameter is not defined")
+	}
+
+	refreshTTL, err := time.ParseDuration(refreshTTLStr)
+
+	if err != nil {
+		return nil, errors.New("error parsing refresh ttl")
 	}
 
 	return &Config{
@@ -81,5 +101,6 @@ func LoadConfig() (*Config, error) {
 		DbName:           dbName,
 		AccessTTL:        accessTTL,
 		AccessSigningKey: accessSigningKey,
+		RefreshTTL:       refreshTTL,
 	}, nil
 }

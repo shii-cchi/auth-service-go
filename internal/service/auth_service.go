@@ -28,17 +28,11 @@ func NewAuthService(q *database.Queries, cfg *config.Config) *AuthService {
 
 type tokenClaims struct {
 	jwt.StandardClaims
-	UserIP string `json:"user_ip"`
+	ClientIP string `json:"client_ip"`
 }
 
-func (s AuthService) CreateTokens(userID uuid.UUID, userIP string) (model.Tokens, error) {
-	ttl, err := time.ParseDuration(s.config.AccessTTL)
-
-	if err != nil {
-		return model.Tokens{}, fmt.Errorf("error parsing access ttl: %s\n", err)
-	}
-
-	accessToken, err := s.newAccessToken(userID, userIP, ttl)
+func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (model.Tokens, error) {
+	accessToken, err := s.newAccessToken(clientID, clientIP, s.config.AccessTTL)
 
 	if err != nil {
 		return model.Tokens{}, fmt.Errorf("error creating access token: %s\n", err)
@@ -53,14 +47,14 @@ func (s AuthService) CreateTokens(userID uuid.UUID, userIP string) (model.Tokens
 	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
 }
 
-func (s AuthService) newAccessToken(userID uuid.UUID, userIP string, ttl time.Duration) (string, error) {
+func (s AuthService) newAccessToken(clientID uuid.UUID, clientIP string, ttl time.Duration) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, &tokenClaims{
 		jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(ttl).Unix(),
 			IssuedAt:  time.Now().Unix(),
-			Subject:   userID.String(),
+			Subject:   clientID.String(),
 		},
-		userIP,
+		clientIP,
 	})
 
 	return token.SignedString([]byte(s.config.AccessSigningKey))
@@ -86,6 +80,46 @@ func (s AuthService) newRefreshToken() (string, string, error) {
 	return refreshTokenStr, string(hashedToken), nil
 }
 
-func (s AuthService) SaveRefreshToken(userID uuid.UUID, userIP string, hashedRefreshToken string) error {
-	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: userID, Ip: userIP, Token: hashedRefreshToken})
+func (s AuthService) SaveRefreshToken(clientID uuid.UUID, hashedRefreshToken string) error {
+	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken})
+}
+
+func (s AuthService) UpdateRefreshToken(clientID uuid.UUID, hashedRefreshToken string) error {
+	return s.queries.UpdateRefreshToken(context.Background(), database.UpdateRefreshTokenParams{ID: clientID, Token: hashedRefreshToken})
+}
+
+func (s AuthService) IsValidRefreshToken(clientID uuid.UUID, refreshToken string) error {
+	storedHashedRefreshToken, err := s.queries.GetRefreshToken(context.Background(), clientID)
+
+	if err != nil {
+		return fmt.Errorf("error getting refresh token from db: %s\n", err)
+	}
+
+	if err = bcrypt.CompareHashAndPassword([]byte(storedHashedRefreshToken), []byte(refreshToken)); err != nil {
+		return fmt.Errorf("invalid refresh token: %s\n", err)
+	}
+
+	return nil
+}
+
+func (s AuthService) GetIDAndIPFromToken(accessToken string) (uuid.UUID, string, error) {
+	token, err := jwt.ParseWithClaims(accessToken, &tokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+
+		return []byte(s.config.AccessSigningKey), nil
+	})
+
+	if claims, ok := token.Claims.(*tokenClaims); ok && token.Valid {
+		clientID, err := uuid.Parse(claims.Subject)
+
+		if err != nil {
+			return uuid.Nil, "", err
+		}
+
+		return clientID, claims.ClientIP, nil
+	}
+
+	return uuid.Nil, "", err
 }

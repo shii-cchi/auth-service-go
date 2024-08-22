@@ -8,7 +8,7 @@ type Tokens struct {
 	HashedRefreshToken string
 }
 
-type User struct {
-	UserID      uuid.UUID `json:"user_id"`
+type Client struct {
+	ClientID    uuid.UUID `json:"client_id"`
 	AccessToken string    `json:"access_token"`
 }
