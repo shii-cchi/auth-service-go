@@ -41,7 +41,8 @@ func setCookie(w http.ResponseWriter, refreshToken string, refreshTTL time.Durat
 		Name:     "refresh_token",
 		Value:    refreshToken,
 		HttpOnly: true,
-		Expires:  time.Now().Add(refreshTTL * time.Hour),
+		Expires:  time.Now().Add(refreshTTL),
+		Path:     "/auth",
 	}
 
 	http.SetCookie(w, &cookie)
