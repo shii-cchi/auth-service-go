@@ -3,11 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -32,6 +34,17 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 	respondWithJSON(w, code, errResponse{
 		Error: msg,
 	})
+}
+
+func setCookie(w http.ResponseWriter, refreshToken string, refreshTTL time.Duration) {
+	cookie := http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		HttpOnly: true,
+		Expires:  time.Now().Add(refreshTTL * time.Hour),
+	}
+
+	http.SetCookie(w, &cookie)
 }
 
 func getIDFromRequest(r *http.Request) (uuid.UUID, error) {
@@ -67,4 +80,20 @@ func getIPFromRequest(r *http.Request) string {
 	}
 
 	return clientIP
+}
+
+func getRefreshToken(r *http.Request) (string, error) {
+	cookie, err := r.Cookie("refresh_token")
+
+	if err != nil {
+		if err == http.ErrNoCookie {
+			return "", fmt.Errorf("cookie not found %s\n", err)
+		}
+
+		return "", err
+	}
+
+	refreshToken := cookie.Value
+
+	return refreshToken, nil
 }

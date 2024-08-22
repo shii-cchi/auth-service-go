@@ -5,11 +5,9 @@ import (
 	"auth-service-go/internal/database"
 	"auth-service-go/internal/model"
 	"auth-service-go/internal/service"
-	"fmt"
 	"github.com/go-chi/chi"
 	"log"
 	"net/http"
-	"time"
 )
 
 type AuthHandler struct {
@@ -63,32 +61,18 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cookie := http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokens.RefreshToken,
-		HttpOnly: true,
-		Expires:  time.Now().Add(h.config.RefreshTTL * time.Hour),
-	}
-
-	http.SetCookie(w, &cookie)
+	setCookie(w, tokens.RefreshToken, h.config.RefreshTTL)
 
 	respondWithJSON(w, http.StatusOK, model.Client{ClientID: clientID, AccessToken: tokens.AccessToken})
 }
 
 func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("refresh_token")
+	refreshToken, err := getRefreshToken(r)
 
 	if err != nil {
-		if err == http.ErrNoCookie {
-			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("cookie not found %s\n", err))
-			return
-		}
-
-		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("%v", err))
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	refreshToken := cookie.Value
 
 	accessToken := r.Header.Get("Authorization")
 
@@ -106,7 +90,7 @@ func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if clientIP != getIPFromRequest(r) {
-		log.Println("send warning to client mail")
+		log.Println("send warning to client mail about IP change")
 		return
 	}
 
@@ -130,14 +114,7 @@ func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	*cookie = http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokens.RefreshToken,
-		HttpOnly: true,
-		Expires:  time.Now().Add(h.config.RefreshTTL * time.Hour),
-	}
-
-	http.SetCookie(w, cookie)
+	setCookie(w, tokens.RefreshToken, h.config.RefreshTTL)
 
 	respondWithJSON(w, http.StatusOK, model.Client{ClientID: clientID, AccessToken: tokens.AccessToken})
 }

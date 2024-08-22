@@ -32,7 +32,7 @@ type tokenClaims struct {
 }
 
 func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (model.Tokens, error) {
-	accessToken, err := s.newAccessToken(clientID, clientIP, s.config.AccessTTL)
+	accessToken, err := s.newAccessToken(clientID, clientIP)
 
 	if err != nil {
 		return model.Tokens{}, fmt.Errorf("error creating access token: %s\n", err)
@@ -47,10 +47,10 @@ func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (model.To
 	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
 }
 
-func (s AuthService) newAccessToken(clientID uuid.UUID, clientIP string, ttl time.Duration) (string, error) {
+func (s AuthService) newAccessToken(clientID uuid.UUID, clientIP string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, &tokenClaims{
 		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(ttl).Unix(),
+			ExpiresAt: time.Now().Add(s.config.AccessTTL).Unix(),
 			IssuedAt:  time.Now().Unix(),
 			Subject:   clientID.String(),
 		},
