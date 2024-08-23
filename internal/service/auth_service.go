@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
@@ -44,7 +45,41 @@ func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (model.To
 		return model.Tokens{}, fmt.Errorf("error creating refresh token: %s\n", err)
 	}
 
+	if err = s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken}); err != nil {
+		return model.Tokens{}, fmt.Errorf("error saving refresh token to db: %s\n", err)
+	}
+
 	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
+}
+
+func (s AuthService) Refresh(refreshToken string, accessToken string) (model.Tokens, uuid.UUID, string, error) {
+	clientID, clientIP, err := s.GetIDAndIPFromToken(accessToken)
+
+	if err != nil {
+		return model.Tokens{}, uuid.Nil, "", errors.New("invalid access token")
+	}
+
+	if err = s.IsValidRefreshToken(clientID, refreshToken); err != nil {
+		return model.Tokens{}, uuid.Nil, "", errors.New("invalid refresh token")
+	}
+
+	newAccessToken, err := s.newAccessToken(clientID, clientIP)
+
+	if err != nil {
+		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error creating access token: %s\n", err)
+	}
+
+	newRefreshToken, newHashedRefreshToken, err := s.newRefreshToken()
+
+	if err != nil {
+		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error creating refresh token: %s\n", err)
+	}
+
+	if err = s.queries.UpdateRefreshToken(context.Background(), database.UpdateRefreshTokenParams{ID: clientID, Token: newHashedRefreshToken}); err != nil {
+		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error updating refresh token in db: %s\n", err)
+	}
+
+	return model.Tokens{AccessToken: newAccessToken, RefreshToken: newRefreshToken, HashedRefreshToken: newHashedRefreshToken}, clientID, clientIP, nil
 }
 
 func (s AuthService) newAccessToken(clientID uuid.UUID, clientIP string) (string, error) {
@@ -78,14 +113,6 @@ func (s AuthService) newRefreshToken() (string, string, error) {
 	}
 
 	return refreshTokenStr, string(hashedToken), nil
-}
-
-func (s AuthService) SaveRefreshToken(clientID uuid.UUID, hashedRefreshToken string) error {
-	return s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken})
-}
-
-func (s AuthService) UpdateRefreshToken(clientID uuid.UUID, hashedRefreshToken string) error {
-	return s.queries.UpdateRefreshToken(context.Background(), database.UpdateRefreshTokenParams{ID: clientID, Token: hashedRefreshToken})
 }
 
 func (s AuthService) IsValidRefreshToken(clientID uuid.UUID, refreshToken string) error {

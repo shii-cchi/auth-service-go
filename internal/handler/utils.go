@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-chi/chi"
 	"github.com/google/uuid"
 	"log"
 	"net"
@@ -49,7 +50,11 @@ func setCookie(w http.ResponseWriter, refreshToken string, refreshTTL time.Durat
 }
 
 func getIDFromRequest(r *http.Request) (uuid.UUID, error) {
-	clientIDStr := r.URL.Query().Get("client_id")
+	clientIDStr := chi.URLParam(r, "client_id")
+
+	if clientIDStr == "" {
+		return uuid.Nil, errors.New("client id parameter not found")
+	}
 
 	if err := uuid.Validate(clientIDStr); err != nil {
 		return uuid.Nil, errors.New("invalid uuid format")
