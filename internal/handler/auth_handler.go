@@ -29,7 +29,7 @@ func (h *AuthHandler) RegisterEndpoints(r chi.Router) {
 func (h *AuthHandler) authHandlers() http.Handler {
 	rg := chi.NewRouter()
 	rg.Group(func(r chi.Router) {
-		r.Get("/token", h.getTokenHandler)
+		r.Get("/token/{client_id}", h.getTokenHandler)
 		r.Get("/token/refresh", h.refreshHandler)
 	})
 
