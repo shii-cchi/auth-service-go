@@ -2,8 +2,8 @@ package service
 
 import (
 	"auth-service-go/internal/config"
+	"auth-service-go/internal/constants"
 	"auth-service-go/internal/database"
-	"auth-service-go/internal/model"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -32,54 +32,60 @@ type tokenClaims struct {
 	ClientIP string `json:"client_ip"`
 }
 
-func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (model.Tokens, error) {
+type Tokens struct {
+	AccessToken        string
+	RefreshToken       string
+	HashedRefreshToken string
+}
+
+func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (Tokens, error) {
 	accessToken, err := s.newAccessToken(clientID, clientIP)
 
 	if err != nil {
-		return model.Tokens{}, fmt.Errorf("error creating access token: %s\n", err)
+		return Tokens{}, fmt.Errorf(constants.ErrCreatingAccessToken+"%s\n", err)
 	}
 
 	refreshToken, hashedRefreshToken, err := s.newRefreshToken()
 
 	if err != nil {
-		return model.Tokens{}, fmt.Errorf("error creating refresh token: %s\n", err)
+		return Tokens{}, fmt.Errorf(constants.ErrCreatingRefreshToken+"%s\n", err)
 	}
 
 	if err = s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken}); err != nil {
-		return model.Tokens{}, fmt.Errorf("error saving refresh token to db: %s\n", err)
+		return Tokens{}, fmt.Errorf(constants.ErrSavingTokenToDB+"%s\n", err)
 	}
 
-	return model.Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
+	return Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil
 }
 
-func (s AuthService) Refresh(refreshToken string, accessToken string) (model.Tokens, uuid.UUID, string, error) {
+func (s AuthService) Refresh(refreshToken string, accessToken string) (Tokens, uuid.UUID, string, error) {
 	clientID, clientIP, err := s.GetIDAndIPFromToken(accessToken)
 
 	if err != nil {
-		return model.Tokens{}, uuid.Nil, "", errors.New("invalid access token")
+		return Tokens{}, uuid.Nil, "", errors.New(constants.ErrInvalidAccessToken)
 	}
 
 	if err = s.IsValidRefreshToken(clientID, refreshToken); err != nil {
-		return model.Tokens{}, uuid.Nil, "", errors.New("invalid refresh token")
+		return Tokens{}, uuid.Nil, "", errors.New(constants.ErrInvalidRefreshToken)
 	}
 
 	newAccessToken, err := s.newAccessToken(clientID, clientIP)
 
 	if err != nil {
-		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error creating access token: %s\n", err)
+		return Tokens{}, uuid.Nil, "", fmt.Errorf(constants.ErrCreatingAccessToken+"%s\n", err)
 	}
 
 	newRefreshToken, newHashedRefreshToken, err := s.newRefreshToken()
 
 	if err != nil {
-		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error creating refresh token: %s\n", err)
+		return Tokens{}, uuid.Nil, "", fmt.Errorf(constants.ErrCreatingRefreshToken+"%s\n", err)
 	}
 
 	if err = s.queries.UpdateRefreshToken(context.Background(), database.UpdateRefreshTokenParams{ID: clientID, Token: newHashedRefreshToken}); err != nil {
-		return model.Tokens{}, uuid.Nil, "", fmt.Errorf("error updating refresh token in db: %s\n", err)
+		return Tokens{}, uuid.Nil, "", fmt.Errorf(constants.ErrUpdatingTokenInDB+"%s\n", err)
 	}
 
-	return model.Tokens{AccessToken: newAccessToken, RefreshToken: newRefreshToken, HashedRefreshToken: newHashedRefreshToken}, clientID, clientIP, nil
+	return Tokens{AccessToken: newAccessToken, RefreshToken: newRefreshToken, HashedRefreshToken: newHashedRefreshToken}, clientID, clientIP, nil
 }
 
 func (s AuthService) newAccessToken(clientID uuid.UUID, clientIP string) (string, error) {
@@ -119,11 +125,11 @@ func (s AuthService) IsValidRefreshToken(clientID uuid.UUID, refreshToken string
 	storedHashedRefreshToken, err := s.queries.GetRefreshToken(context.Background(), clientID)
 
 	if err != nil {
-		return fmt.Errorf("error getting refresh token from db: %s\n", err)
+		return fmt.Errorf(constants.ErrGettingTokenFromDB+"%s\n", err)
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(storedHashedRefreshToken), []byte(refreshToken)); err != nil {
-		return fmt.Errorf("invalid refresh token: %s\n", err)
+		return fmt.Errorf(constants.ErrInvalidRefreshToken+"%s\n", err)
 	}
 
 	return nil
@@ -132,7 +138,7 @@ func (s AuthService) IsValidRefreshToken(clientID uuid.UUID, refreshToken string
 func (s AuthService) GetIDAndIPFromToken(accessToken string) (uuid.UUID, string, error) {
 	token, err := jwt.ParseWithClaims(accessToken, &tokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			return nil, fmt.Errorf(constants.ErrUnexpectedSigningMethod+"%v", token.Header["alg"])
 		}
 
 		return []byte(s.config.AccessSigningKey), nil

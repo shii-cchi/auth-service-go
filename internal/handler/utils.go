@@ -1,10 +1,10 @@
 package handler
 
 import (
+	"auth-service-go/internal/constants"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi"
 	"github.com/google/uuid"
 	"log"
 	"net"
@@ -49,21 +49,15 @@ func setCookie(w http.ResponseWriter, refreshToken string, refreshTTL time.Durat
 	http.SetCookie(w, &cookie)
 }
 
-func getIDFromRequest(r *http.Request) (uuid.UUID, error) {
-	clientIDStr := chi.URLParam(r, "client_id")
-
+func getID(clientIDStr string) (uuid.UUID, error) {
 	if clientIDStr == "" {
-		return uuid.Nil, errors.New("client id parameter not found")
-	}
-
-	if err := uuid.Validate(clientIDStr); err != nil {
-		return uuid.Nil, errors.New("invalid uuid format")
+		return uuid.Nil, errors.New(constants.ErrClientIDNotFound)
 	}
 
 	clientID, err := uuid.Parse(clientIDStr)
 
 	if err != nil {
-		return uuid.Nil, errors.New("error parsing client id")
+		return uuid.Nil, errors.New(constants.ErrInvalidUUID)
 	}
 
 	return clientID, nil
@@ -93,7 +87,7 @@ func getRefreshToken(r *http.Request) (string, error) {
 
 	if err != nil {
 		if err == http.ErrNoCookie {
-			return "", fmt.Errorf("cookie not found %s\n", err)
+			return "", fmt.Errorf(constants.ErrCookieNotFound+" %s\n", err)
 		}
 
 		return "", err

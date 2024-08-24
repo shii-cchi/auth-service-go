@@ -2,6 +2,7 @@ package handler
 
 import (
 	"auth-service-go/internal/config"
+	"auth-service-go/internal/constants"
 	"auth-service-go/internal/database"
 	"auth-service-go/internal/handler/dto"
 	"auth-service-go/internal/service"
@@ -37,11 +38,13 @@ func (h *AuthHandler) authHandlers() http.Handler {
 }
 
 func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
-	clientID, err := getIDFromRequest(r)
+	clientIDStr := chi.URLParam(r, "client_id")
+
+	clientID, err := getID(clientIDStr)
 
 	if err != nil {
-		log.Printf("error getting client id: %s\n", err)
-		respondWithError(w, http.StatusBadRequest, "error getting client id")
+		log.Printf(constants.ErrInvalidClientID+"%s\n", err)
+		respondWithError(w, http.StatusBadRequest, constants.ErrInvalidClientID)
 		return
 	}
 
@@ -50,8 +53,8 @@ func (h *AuthHandler) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 	tokens, err := h.authService.CreateTokens(clientID, clientIP)
 
 	if err != nil {
-		log.Printf("error creating tokens: %s\n", err)
-		respondWithError(w, http.StatusInternalServerError, "error creating tokens")
+		log.Printf(constants.ErrCreatingTokens+"%s\n", err)
+		respondWithError(w, http.StatusInternalServerError, constants.ErrCreatingTokens)
 		return
 	}
 
@@ -64,28 +67,28 @@ func (h *AuthHandler) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := getRefreshToken(r)
 
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, err.Error())
+		respondWithError(w, http.StatusUnauthorized, constants.ErrRefreshTokenNotFound)
 		return
 	}
 
 	accessToken := r.Header.Get("Authorization")
 
 	if accessToken == "" {
-		respondWithError(w, http.StatusUnauthorized, "access token not found")
+		respondWithError(w, http.StatusUnauthorized, constants.ErrAccessTokenNotFound)
 		return
 	}
 
 	tokens, clientID, clientIP, err := h.authService.Refresh(refreshToken, accessToken)
 
 	if err != nil {
-		log.Printf("error refresh: %s\n", err)
+		log.Printf(constants.ErrRefreshingTokens+"%s\n", err)
 
-		if err.Error() == "invalid access token" || err.Error() == "invalid refresh token" {
-			respondWithError(w, http.StatusUnauthorized, "error refresh")
+		if err.Error() == constants.ErrInvalidAccessToken || err.Error() == constants.ErrInvalidRefreshToken {
+			respondWithError(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 
-		respondWithError(w, http.StatusInternalServerError, "error refresh")
+		respondWithError(w, http.StatusInternalServerError, constants.ErrRefreshingTokens)
 		return
 	}
 
