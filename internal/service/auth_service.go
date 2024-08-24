@@ -51,8 +51,20 @@ func (s AuthService) CreateTokens(clientID uuid.UUID, clientIP string) (Tokens, 
 		return Tokens{}, fmt.Errorf(constants.ErrCreatingRefreshToken+"%s\n", err)
 	}
 
-	if err = s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken}); err != nil {
-		return Tokens{}, fmt.Errorf(constants.ErrSavingTokenToDB+"%s\n", err)
+	exist, err := s.queries.CheckClientExists(context.Background(), clientID)
+
+	if err != nil {
+		return Tokens{}, fmt.Errorf(constants.ErrCheckingClient+"%s\n", err)
+	}
+
+	if exist {
+		if err = s.queries.UpdateRefreshToken(context.Background(), database.UpdateRefreshTokenParams{ID: clientID, Token: hashedRefreshToken}); err != nil {
+			return Tokens{}, fmt.Errorf(constants.ErrUpdatingTokenInDB+"%s\n", err)
+		}
+	} else {
+		if err = s.queries.AddRefreshToken(context.Background(), database.AddRefreshTokenParams{ID: clientID, Token: hashedRefreshToken}); err != nil {
+			return Tokens{}, fmt.Errorf(constants.ErrSavingTokenToDB+"%s\n", err)
+		}
 	}
 
 	return Tokens{AccessToken: accessToken, RefreshToken: refreshToken, HashedRefreshToken: hashedRefreshToken}, nil

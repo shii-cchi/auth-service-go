@@ -11,3 +11,10 @@ WHERE id = $1;
 UPDATE clients
 SET token = $2
 WHERE id = $1;
+
+-- name: CheckClientExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM clients
+    WHERE id = $1
+) AS client_exists;

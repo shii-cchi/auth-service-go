@@ -26,6 +26,21 @@ func (q *Queries) AddRefreshToken(ctx context.Context, arg AddRefreshTokenParams
 	return err
 }
 
+const checkClientExists = `-- name: CheckClientExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM clients
+    WHERE id = $1
+) AS client_exists
+`
+
+func (q *Queries) CheckClientExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRowContext(ctx, checkClientExists, id)
+	var client_exists bool
+	err := row.Scan(&client_exists)
+	return client_exists, err
+}
+
 const getRefreshToken = `-- name: GetRefreshToken :one
 SELECT token
 FROM clients
